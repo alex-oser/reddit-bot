@@ -8,16 +8,39 @@ import sqlite3
 from sqlite3 import Error
 import sys
 
+
+def environment_setup():
+    """ performs environment validations before the script proceeds """
+    script_path=os.path.dirname(os.path.realpath(__file__))
+    config_file=Path('{}/praw.ini'.format(script_path))
+    if not config_file.is_file():
+        sys.exit('Error: praw.ini does exist. Unable to configure praw connection. Please create the praw.ini file.')
+    database_file=Path(database_path)
+    if not database_file.is_file():
+        print("Database does not exist, initializing a new one.")
+        create_database()
+
+def create_database():
+    """ creates database if it does not already exist """
+    f=open("".join([script_path,"/reddit_scraper.sql"]), 'r')
+    sqlFile=f.read()
+    f.close()
+    sqlCommands=sqlFile.split(';')
+    conn=db_connection(database_path)
+    with conn:
+        cur = conn.cursor()
+        for command in sqlCommands:
+            try:
+                cur.execute(command)
+            except Error as e:
+                print(e)
+
+
 def get_submissions(sub):
     """ create a connection to the Reddit API and pull data
     :param sub: subreddit to pull submissions from
     :return: dictionary containing submission id as the key and the submission as the value
     """
-    script_path=os.path.dirname(os.path.realpath(__file__))
-    print("script_path is {}".format(script_path))
-    config=Path('{}/praw.ini'.format(script_path))
-    if not config.is_file():
-        sys.exit('Error: praw.ini does exist. Unable to configure praw connection. Please create the praw.ini file.')
     reddit = praw.Reddit('random_bot')
     submissions={}
     for submission in reddit.subreddit(sub).new():
@@ -93,7 +116,6 @@ def process_submission(conn, submission):
     words = submission.title.split()
     num_contents_has_changed = check_num_comments(conn, submission)
     if not num_contents_has_changed:
-        print("Number of comments has not changed, skipping post and comments")
         return
     if check_object(conn, submission):
         insert_words(conn, words, submission.fullname)
@@ -123,14 +145,18 @@ def record_submissions(subreddit):
     """ inserts data into the submissions and words tables """
     print("Getting submissions from r/{}...".format(subreddit))
     submissions=get_submissions(subreddit)
-    conn=db_connection(database)
+    num_submissions=len(submissions)
+    conn=db_connection(database_path)
+    count=0
     with conn:
         print("Inserting new content into submissions and words tables...")
         for submission in submissions.values():
+            count+=1
+            sys.stdout.write("\rProcessing submission {}/{}...".format(count,num_submissions))
             # if check_object(conn, submission): # For now, moving check here to the object level instead of submission level, this will
             # re-check submissions for new comments
             process_submission(conn, submission)
-        print("Committing changes and closing the connection.")
+        print("\nCommitting changes and closing the connection.")
         conn.commit()
 
 
@@ -148,9 +174,12 @@ def db_connection(db_file):
     return None
     
 def main():
+    environment_setup()
     record_submissions('stocks')
-  
-database="/Users/alex/Coding/reddit-bot/reddit_scraper.db"
+
+script_path=os.path.dirname(os.path.realpath(__file__))
+database="reddit_scraper.db"
+database_path="{}/{}".format(script_path,database)
 if __name__== "__main__":
   main()
 
