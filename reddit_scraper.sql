@@ -7,7 +7,8 @@ CREATE TABLE objects (
 	type VARCHAR(10),
 	created_time INT,
 	content VARCHAR(300),
-	url VARCHAR(300)
+	url VARCHAR(300),
+	num_comments INT
 );
 
 DROP TABLE IF EXISTS words;

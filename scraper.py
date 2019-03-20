@@ -13,38 +13,60 @@ def get_submissions(sub):
     """
     reddit = praw.Reddit('random_bot')
     submissions={}
-    for submission in reddit.subreddit(sub).new(limit=10):
+    for submission in reddit.subreddit(sub).new():
         title = submission.title
         submissions[submission.id]=submission
     return submissions
 
 def check_object(conn, praw_object):
     """ checks to see if this object has already been parsed or not
-    :param submission_id: id of the object to check
-    :return: true if the object has not been parsed yet, false otherwise 
+    if not, inserts it into the objects database
+    :param praw_object: the object to check (either a submission or a comment)
+    :return: True if the object has not been parsed yet, False if not 
     """
     cur = conn.cursor()
     sql = ''' SELECT COUNT(*) FROM objects WHERE id = ? '''
     cur.execute(sql, (praw_object.fullname,))     
     count = cur.fetchone()[0]
     if count < 1:
-        print("Found a new object")
         praw_object_type = get_object_type(praw_object.fullname)
-        sql = '''INSERT INTO objects (id, type, created_time, content, url) \
-            VALUES (?,?,?,?,?)'''
-        values=get_object_values(praw_object, praw_object_type)
+        sql,values = get_object_values(praw_object, praw_object_type)
         cur.execute(sql, values)
         return True
     else:
         return False
 
+def check_num_comments(conn, submission):
+    """ checks to see if the number of comments has changed since the last time the post was processed 
+    :param conn: database connection object
+    :param submission: submission to check
+    :return: True if the number of comments has changed, False if not
+    """
+    cur = conn.cursor()
+    sql = ''' SELECT num_comments FROM objects WHERE id = ? '''
+    cur.execute(sql, (submission.fullname,))     
+    num_comments = cur.fetchone()
+    if num_comments == None:
+        return True
+    elif submission.num_comments != num_comments[0]:
+        return True
+    else:
+        return False
+
 def get_object_values(praw_object, praw_object_type):
-    """ insert object information to the objects table """
+    """ returns the sql and values to insert based on the object type
+    :param praw_object: object to get the values for
+    :param praw_object_type: type of object
+    :return sql: sql statement to use to insert to objects table
+    :return values: values to use to insert to objects table 
+    """
     if praw_object_type == "Comment":
+        sql = '''INSERT INTO objects (id, type, created_time, content, url) VALUES (?,?,?,?,?)'''
         values = (praw_object.fullname,praw_object_type,praw_object.created_utc,praw_object.body,praw_object.permalink)
     elif praw_object_type == "Link":
-        values = (praw_object.fullname,praw_object_type,praw_object.created_utc,praw_object.title,praw_object.url)
-    return values
+        sql = '''INSERT INTO objects (id, type, created_time, content, url, num_comments) VALUES (?,?,?,?,?,?)'''
+        values = (praw_object.fullname,praw_object_type,praw_object.created_utc,praw_object.title,praw_object.url,praw_object.num_comments)
+    return sql, values
     
 
 def get_object_type(object_id):
@@ -62,10 +84,17 @@ def get_object_type(object_id):
 def process_submission(conn, submission):
     """ get the words from each object in the submission and insert them """
     words = submission.title.split()
-    insert_words(conn, words, submission.fullname)
-    for comment in submission.comments:
-        words = comment.body.split()
-        insert_words(conn, words, comment.fullname)
+    num_contents_has_changed = check_num_comments(conn, submission)
+    if not num_contents_has_changed:
+        print("Number of comments has not changed, skipping post and comments")
+        return
+    if check_object(conn, submission):
+        insert_words(conn, words, submission.fullname)
+    submission.comments.replace_more(limit=None)
+    for comment in submission.comments.list():
+        if check_object(conn, comment):
+            words = comment.body.split()
+            insert_words(conn, words, comment.fullname)
 
 def process_words(words):
     """ performs text processing on words in a submission to standardize them for further analysis """
@@ -91,8 +120,9 @@ def record_submissions(subreddit):
     with conn:
         print("Inserting new content into submissions and words tables...")
         for submission in submissions.values():
-            if check_object(conn, submission):
-                process_submission(conn, submission)
+            # if check_object(conn, submission): # For now, moving check here to the object level instead of submission level, this will
+            # re-check submissions for new comments
+            process_submission(conn, submission)
         print("Committing changes and closing the connection.")
         conn.commit()
 
