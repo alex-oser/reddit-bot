@@ -2,6 +2,8 @@
 
 import praw
 import re
+import os
+from pathlib import Path
 import sqlite3
 from sqlite3 import Error
 import sys
@@ -11,6 +13,11 @@ def get_submissions(sub):
     :param sub: subreddit to pull submissions from
     :return: dictionary containing submission id as the key and the submission as the value
     """
+    script_path=os.path.dirname(os.path.realpath(__file__))
+    print("script_path is {}".format(script_path))
+    config=Path('{}/praw.ini'.format(script_path))
+    if not config.is_file():
+        sys.exit('Error: praw.ini does exist. Unable to configure praw connection. Please create the praw.ini file.')
     reddit = praw.Reddit('random_bot')
     submissions={}
     for submission in reddit.subreddit(sub).new():

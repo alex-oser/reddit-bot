@@ -1,1 +1,3 @@
+# Ignore the following files
 *.ini
+*.db
