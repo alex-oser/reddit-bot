@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+import csv
 import praw
 import re
 import os
 from pathlib import Path
+import requests
 import sqlite3
 from sqlite3 import Error
 import sys
@@ -22,7 +24,7 @@ def environment_setup():
 
 def create_database():
     """ creates database if it does not already exist """
-    f=open("".join([script_path,"/reddit_scraper.sql"]), 'r')
+    f=open("".join([script_path,"/reddit_parser.sql"]), 'r')
     sqlFile=f.read()
     f.close()
     sqlCommands=sqlFile.split(';')
@@ -114,8 +116,8 @@ def get_object_type(object_id):
 def process_submission(conn, submission):
     """ get the words from each object in the submission and insert them """
     words = submission.title.split()
-    num_contents_has_changed = check_num_comments(conn, submission)
-    if not num_contents_has_changed:
+    num_comments_has_changed = check_num_comments(conn, submission)
+    if not num_comments_has_changed:
         return
     if check_object(conn, submission):
         insert_words(conn, words, submission.fullname)
@@ -159,6 +161,23 @@ def record_submissions(subreddit):
         print("\nCommitting changes and closing the connection.")
         conn.commit()
 
+def record_stock_info():
+    with requests.Session() as s:
+        amex = s.get('https://www.nasdaq.com/screening/companies-by-name.aspx?letter=0&exchange=amex&render=download')
+        nyse = s.get('https://www.nasdaq.com/screening/companies-by-name.aspx?letter=0&exchange=nyse&render=download')
+        nasdaq = s.get('https://www.nasdaq.com/screening/companies-by-name.aspx?letter=0&exchange=nasdaq&render=download')
+        amex_csv = csv.reader(amex.content.decode('utf-8').splitlines(), delimiter=',')
+        nyse_csv = csv.reader(nyse.content.decode('utf-8').splitlines(), delimiter=',')
+        nasdaq_csv = csv.reader(nasdaq.content.decode('utf-8').splitlines(), delimiter=',')
+        csv.reader
+    conn=db_connection(database_path)
+    with conn:
+        cur = conn.cursor()
+        stmt = ''' INSERT INTO stock_info (symbol, name, last_sale, market_cap, ipo_year, sector, industry, summary_quote) \
+            VALUES (?,?,?,?,?,?,?,?) '''
+        cur.executemany(stmt, amex_csv)
+
+
 
 def db_connection(db_file):
     """ create a database connection to the SQLite database
@@ -178,7 +197,7 @@ def main():
     record_submissions('stocks')
 
 script_path=os.path.dirname(os.path.realpath(__file__))
-database="reddit_scraper.db"
+database="reddit_parser.db"
 database_path="{}/{}".format(script_path,database)
 if __name__== "__main__":
   main()
