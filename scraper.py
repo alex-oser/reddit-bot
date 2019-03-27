@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import datetime
 import praw
 import re
 import os
@@ -14,7 +15,7 @@ def environment_setup():
     script_path=os.path.dirname(os.path.realpath(__file__))
     config_file=Path('{}/praw.ini'.format(script_path))
     if not config_file.is_file():
-        sys.exit('Error: praw.ini does exist. Unable to configure praw connection. Please create the praw.ini file.')
+        sys.exit('Error: praw.ini does exist. Unable to configure praw connection. Refer to the documentation for where to put this file: https://praw.readthedocs.io/en/latest/getting_started/configuration/prawini.html')
     database_file=Path(database_path)
     if not database_file.is_file():
         print("Database does not exist, initializing a new one.")
@@ -34,7 +35,6 @@ def create_database():
                 cur.execute(command)
             except Error as e:
                 print(e)
-
 
 def get_submissions(sub):
     """ create a connection to the Reddit API and pull data
@@ -143,6 +143,8 @@ def insert_words(conn, words, object_id):
 
 def record_submissions(subreddit):
     """ inserts data into the submissions and words tables """
+    now = datetime.datetime.now()
+    print ("Current time is: {}".format(now.strftime("%Y-%m-%d %H:%M:%S")))
     print("Getting submissions from r/{}...".format(subreddit))
     submissions=get_submissions(subreddit)
     num_submissions=len(submissions)
